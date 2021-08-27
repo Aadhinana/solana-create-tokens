@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 
 import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, TransactionInstruction, SYSVAR_RENT_PUBKEY, Transaction } from '@solana/web3.js';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, MintLayout, AccountLayout, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, MintLayout, AccountLayout, Token, TOKEN_PROGRAM_ID, u64 } from '@solana/spl-token';
 import bs58 from 'bs58';
 import { Buffer } from 'buffer';
 
@@ -16,6 +16,8 @@ function App() {
   const [address, setAddress] = useState(null);
   const [mintAddress, setMintAddress] = useState(null);
   const [tokenAccount, setTokenAccount] = useState(null);
+
+  const [numberOfTokens, setNumberOfTokens] = useState(0);
 
   const createTokens = async () => {
 
@@ -259,6 +261,50 @@ function App() {
     setTokenAccount(newAccount.publicKey.toBase58());
   }
 
+  const mintTokens = async () => {
+    const destinationAcc = new PublicKey(`${tokenAccount}`);
+    const tokenMintPubkey = new PublicKey(`${mintAddress}`)
+    const connection = getConnection();
+    const ownerPubkey = getPublicKey();
+    let amount = new u64(numberOfTokens, 10);
+    console.log(amount);
+    // return;
+
+    const mintIx = Token.createMintToInstruction(
+      TOKEN_PROGRAM_ID,
+      tokenMintPubkey,
+      destinationAcc,
+      ownerPubkey,
+      [],
+      amount
+    );
+
+    let tx = new Transaction().add(mintIx);
+
+    tx.feePayer = ownerPubkey;
+
+    tx.recentBlockhash = (await getRecentBlockhash()).blockhash;
+
+
+    const signedTransaction = await window.solana.request({
+      method: "signTransaction",
+      params: {
+        message: bs58.encode(tx.serializeMessage()),
+      },
+    });
+    // console.log(signedTransaction);
+
+    const signature = bs58.decode(signedTransaction.signature);
+    const publicKey = new PublicKey(signedTransaction.publicKey);
+    tx.addSignature(publicKey, signature);
+    console.log(tx);
+
+    let si = await connection.sendRawTransaction(tx.serialize());
+    const hash = await connection.confirmTransaction(si);
+
+    console.log(hash);
+  }
+
   return (
     <div className="App">
       {console.log("Render called")}
@@ -291,6 +337,18 @@ function App() {
 
         {tokenAccount && <p>{tokenAccount} is the token address</p>}
       </div>
+
+
+      <div>
+        <h2>Mint Tokens</h2>
+        <p>Minting {mintAddress} </p>
+        <p>tokens for {address} </p>
+        <p>in this this account {tokenAccount}</p>
+      </div>
+
+      <label htmlFor="input">Enter the number of tokens you want to mint </label>
+      <input type="number" id="input" value={numberOfTokens} onChange={e => { setNumberOfTokens(e.target.value) }} />
+      <button onClick={mintTokens.bind(this)}>Mint Tokens</button>
     </div >
   )
 }
