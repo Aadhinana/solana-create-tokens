@@ -1,15 +1,20 @@
-### Voting Contract
+### Create Tokens using UI
 
-This is an attempt to re write ( [this](https://github.com/mcf-rocks/simple-vote-tutorial) ) with newer structure that follows the 5 file system as show [here](https://paulx.dev/blog/2021/01/14/programming-on-solana-an-introduction/#code-structure).
+>WIP
+
+
+This is an attempt to create SPL Tokens from a webapp itself
+
+
+1. Try to create Custom tokens of a user
+2. Try to create Multisig tokens that can be minted with two people.
+
 
 ---
 
 Steps to get started: 
 
 > WIP
-1. `solana-test-validator` to get the local chain running
-2. 
-
 
 ---
 
