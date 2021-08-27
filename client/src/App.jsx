@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
 
 import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, TransactionInstruction, SYSVAR_RENT_PUBKEY, Transaction } from '@solana/web3.js';
-import { MintLayout, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, MintLayout, AccountLayout, Token, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import bs58 from 'bs58';
+import { Buffer } from 'buffer';
 
 // Need to deploy the contract and figure out how to create the account for data storage
 const VOTING_CONTRACT_PROGRAMID = "";
@@ -146,6 +147,60 @@ function App() {
     }
   }
 
+  const createAssociatedTokenAccount = async () => {
+    let ownerAccount = getPublicKey();
+    let mintAccount = new PublicKey(`${mintAddress}`);
+
+    let associatedAccountAddress = (await PublicKey.createProgramAddress(
+      [ownerAccount.toBuffer(), mintAccount.toBuffer(), TOKEN_PROGRAM_ID.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    ));
+
+    console.log(associatedAccountAddress.toBase58())
+
+    let ix = new TransactionInstruction({
+      programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+      data: Buffer.from([]),
+      keys: [
+        { pubkey: ownerAccount, isSigner: true, isWritable: true },
+        { pubkey: associatedAccountAddress, isSigner: false, isWritable: true },
+        { pubkey: ownerAccount, isSigner: false, isWritable: false },
+        { pubkey: mintAccount, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ]
+    });
+
+    let tx = new Transaction().add(ix);
+
+    tx.feePayer = getPublicKey();
+
+    tx.recentBlockhash = (await getRecentBlockhash()).blockhash;
+
+    const signedTransaction = await window.solana.request({
+      method: "signTransaction",
+      params: {
+        message: bs58.encode(tx.serializeMessage()),
+      },
+    });
+    // console.log(signedTransaction);
+
+    const signature = bs58.decode(signedTransaction.signature);
+    const publicKey = new PublicKey(signedTransaction.publicKey);
+    tx.addSignature(publicKey, signature);
+
+    let connection = getConnection();
+    console.log(tx);
+
+    let si = await connection.sendRawTransaction(tx.serialize());
+    const hash = await connection.confirmTransaction(si);
+
+    console.log(hash);
+
+    setTokenAccount(associatedAccountAddress.toBase58());
+
+  }
   return (
     <div className="App">
       {console.log("Render called")}
@@ -163,6 +218,15 @@ function App() {
         <br />
         {mintAddress && <p>{mintAddress} is the token address</p>}
       </div>
+      <br />
+
+      <div>
+        <h2>Create Associated Token Account</h2>
+        {mintAddress && <p>{mintAddress} is taken as the Token ID</p>}
+        <p>The wallet owner is taken as the owning authority of the token.</p>
+        <p>Getting Associated Account does not work now.</p>
+        <button onClick={createAssociatedTokenAccount.bind(this)}>Create Associated Token Account</button>
+        <br />
     </div >
   )
 }
