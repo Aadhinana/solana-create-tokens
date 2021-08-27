@@ -15,6 +15,7 @@ function App() {
   const [walletBalance, setWalletBalance] = useState(null);
   const [address, setAddress] = useState(null);
   const [mintAddress, setMintAddress] = useState(null);
+  const [tokenAccount, setTokenAccount] = useState(null);
 
   const createTokens = async () => {
 
@@ -201,6 +202,63 @@ function App() {
     setTokenAccount(associatedAccountAddress.toBase58());
 
   }
+
+  const createTokenAccount = async () => {
+    const tokenMintPubkey = new PublicKey(`${mintAddress}`);
+    const ownerPubkey = getPublicKey();
+
+
+    const connection = getConnection();
+
+    const balanceNeeded = await Token.getMinBalanceRentForExemptAccount(
+      connection
+    );
+
+    const newAccount = new Keypair();
+
+    const createAccIx = SystemProgram.createAccount({
+      fromPubkey: ownerPubkey,
+      newAccountPubkey: newAccount.publicKey,
+      lamports: balanceNeeded,
+      space: AccountLayout.span,
+      programId: TOKEN_PROGRAM_ID
+    });
+
+    const createTokenAccountIx = Token.createInitAccountInstruction(
+      TOKEN_PROGRAM_ID,
+      tokenMintPubkey,
+      newAccount.publicKey,
+      ownerPubkey
+    );
+
+    let tx = new Transaction().add(createAccIx, createTokenAccountIx);
+
+    tx.feePayer = ownerPubkey;
+
+    tx.recentBlockhash = (await getRecentBlockhash()).blockhash;
+
+    tx.sign(newAccount);
+
+    const signedTransaction = await window.solana.request({
+      method: "signTransaction",
+      params: {
+        message: bs58.encode(tx.serializeMessage()),
+      },
+    });
+    // console.log(signedTransaction);
+
+    const signature = bs58.decode(signedTransaction.signature);
+    const publicKey = new PublicKey(signedTransaction.publicKey);
+    tx.addSignature(publicKey, signature);
+
+    let si = await connection.sendRawTransaction(tx.serialize());
+    const hash = await connection.confirmTransaction(si);
+
+    console.log(hash);
+
+    setTokenAccount(newAccount.publicKey.toBase58());
+  }
+
   return (
     <div className="App">
       {console.log("Render called")}
@@ -227,6 +285,12 @@ function App() {
         <p>Getting Associated Account does not work now.</p>
         <button onClick={createAssociatedTokenAccount.bind(this)}>Create Associated Token Account</button>
         <br />
+
+        <button onClick={createTokenAccount.bind(this)}>Create Token Account</button>
+
+
+        {tokenAccount && <p>{tokenAccount} is the token address</p>}
+      </div>
     </div >
   )
 }
