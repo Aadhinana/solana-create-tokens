@@ -4,6 +4,7 @@ import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transa
 import { ASSOCIATED_TOKEN_PROGRAM_ID, MintLayout, AccountLayout, Token, TOKEN_PROGRAM_ID, u64 } from '@solana/spl-token';
 import bs58 from 'bs58';
 import { Buffer } from 'buffer';
+import * as BufferLayout from 'buffer-layout';
 
 // Need to deploy the contract and figure out how to create the account for data storage
 const VOTING_CONTRACT_PROGRAMID = "";
@@ -305,6 +306,88 @@ function App() {
     console.log(hash);
   }
 
+  const createMultiSigAccount = async () => {
+    // Create a local account in browser to sign with client account for 2:2 multisig
+
+    let m = 2;
+    let connection = getConnection();
+
+    let secondAcount = new Keypair();
+    console.log(secondAcount.publicKey.toBase58(), "is the public key of the other account co signing this.")
+    console.log(secondAcount.secretKey.toString())
+    
+    let multisigAcc = new Keypair();
+    console.log(multisigAcc.publicKey.toBase58(), "is the public key of the multisig account")
+
+    const balanceNeeded = await Token.getMinBalanceRentForExemptMultisig(
+      getConnection()
+    );
+
+    const transaction = new Transaction();
+    transaction.add(
+      SystemProgram.createAccount({
+        fromPubkey: getPublicKey(),
+        newAccountPubkey: multisigAcc.publicKey,
+        lamports: balanceNeeded,
+        space: MintLayout.span,
+        programId: TOKEN_PROGRAM_ID,
+      }),
+    );
+
+    // create the new account
+    let keys = [
+      { pubkey: multisigAcc.publicKey, isSigner: false, isWritable: true },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+    ];
+
+    keys.push({ pubkey: getPublicKey(), isSigner: false, isWritable: false });
+    keys.push({ pubkey: secondAcount.publicKey, isSigner: false, isWritable: false });
+
+    const dataLayout = BufferLayout.struct([
+      BufferLayout.u8('instruction'),
+      BufferLayout.u8('m'),
+    ]);
+    const data = Buffer.alloc(dataLayout.span);
+    dataLayout.encode(
+      {
+        instruction: 2, // InitializeMultisig instruction
+        m,
+      },
+      data,
+    );
+    transaction.add({
+      keys,
+      programId: TOKEN_PROGRAM_ID,
+      data,
+    });
+
+    // Send the two instructions
+
+    transaction.feePayer = getPublicKey();
+
+    transaction.recentBlockhash = (await getRecentBlockhash()).blockhash;
+
+    transaction.sign(multisigAcc);
+
+    const signedTransaction = await window.solana.request({
+      method: "signTransaction",
+      params: {
+        message: bs58.encode(transaction.serializeMessage()),
+      },
+    });
+    // console.log(signedTransaction);
+
+    const signature = bs58.decode(signedTransaction.signature);
+    const publicKey = new PublicKey(signedTransaction.publicKey);
+    transaction.addSignature(publicKey, signature);
+
+    let si = await connection.sendRawTransaction(transaction.serialize());
+    const hash = await connection.confirmTransaction(si);
+
+    console.log(hash);
+
+  }
+
   return (
     <div className="App">
       {console.log("Render called")}
@@ -349,6 +432,11 @@ function App() {
       <label htmlFor="input">Enter the number of tokens you want to mint </label>
       <input type="number" id="input" value={numberOfTokens} onChange={e => { setNumberOfTokens(e.target.value) }} />
       <button onClick={mintTokens.bind(this)}>Mint Tokens</button>
+
+      <div>
+        <h3>Create Multisig Account</h3>
+        <button onClick={createMultiSigAccount.bind(this)}>Create multisig Account</button>
+      </div>
     </div >
   )
 }
